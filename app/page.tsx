@@ -5,6 +5,7 @@ import { FormEvent, KeyboardEvent, useEffect, useMemo, useState } from "react";
 
 type ProjectStatus = "Active" | "Pre-Launch";
 type FloorStatus = "Available" | "Sold" | "Entrepreneur" | `${number} Left`;
+type Theme = "light" | "dark";
 
 type Project = {
   id: number;
@@ -364,6 +365,14 @@ const paymentPlan = [
   { phase: "Handover", pct: "10%", note: "Final payment on possession" },
 ];
 
+const navigationItems = [
+  ["Projects", "projects"],
+  ["How it works", "how-it-works"],
+  ["Pricing", "pricing"],
+  ["FAQ", "faq"],
+  ["Contact", "contact"],
+] as const;
+
 const fmtLac = (value: number) => `${Math.round(value / 100_000)} Lac`;
 
 function scrollToId(id: string) {
@@ -371,28 +380,82 @@ function scrollToId(id: string) {
 }
 
 function Logo({ compact = false }: { compact?: boolean }) {
+  const [animationCycle, setAnimationCycle] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (isAnimating) {
+        setIsAnimating(false);
+        return;
+      }
+
+      setAnimationCycle((cycle) => cycle + 1);
+      setIsAnimating(true);
+    }, isAnimating ? 6_000 : 15_000);
+
+    return () => clearTimeout(timer);
+  }, [isAnimating]);
+
   return (
     <a href="#top" className="group flex items-center gap-3" aria-label="Barakah Homes home">
-      <span className={`logo-lockup ${compact ? "h-16 w-24" : "h-20 w-28"} relative block overflow-hidden rounded-sm`}>
-        <picture className="block h-full w-full">
-          <source srcSet="/barakah-logo-transparent-smooth.apng" type="image/apng" />
+      <span className={`logo-lockup ${compact ? "h-16 w-24" : "h-16 w-24 sm:h-20 sm:w-28"} relative block overflow-hidden rounded-sm`}>
+        {isAnimating ? (
+          <picture key={animationCycle} className="block h-full w-full">
+            <source srcSet={`/barakah-logo-transparent-smooth.apng?cycle=${animationCycle}`} type="image/apng" />
+            <Image
+              src="/barakah-logo-transparent-smooth.png"
+              alt="Barakah Homes Ltd"
+              width={280}
+              height={280}
+              unoptimized
+              priority
+              className="h-full w-full scale-[1.08] object-contain"
+            />
+          </picture>
+        ) : (
           <Image
             src="/barakah-logo-transparent-smooth.png"
-            alt="Barakah Homes Ltd animated logo"
+            alt="Barakah Homes Ltd"
             width={280}
             height={280}
             unoptimized
             priority
             className="h-full w-full scale-[1.08] object-contain"
           />
-        </picture>
+        )}
       </span>
     </a>
   );
 }
 
+function ThemeToggle({ theme, onToggle }: { theme: Theme; onToggle: () => void }) {
+  const isDark = theme === "dark";
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="theme-toggle grid h-11 w-11 shrink-0 place-items-center rounded-full border border-border bg-surface text-heading shadow-sm transition hover:-translate-y-0.5 hover:border-gold hover:text-gold"
+      aria-label={`Switch to ${isDark ? "light" : "dark"} mode`}
+      title={`Switch to ${isDark ? "light" : "dark"} mode`}
+    >
+      {isDark ? (
+        <svg aria-hidden="true" viewBox="0 0 24 24" className="h-[1.1rem] w-[1.1rem]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+          <circle cx="12" cy="12" r="3.5" />
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42" />
+        </svg>
+      ) : (
+        <svg aria-hidden="true" viewBox="0 0 24 24" className="h-[1.1rem] w-[1.1rem]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 function Eyebrow({ children }: { children: React.ReactNode }) {
-  return <p className="mb-3 text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-gold">{children}</p>;
+  return <p className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-gold">{children}</p>;
 }
 
 function SectionHeading({ eyebrow, title, copy }: { eyebrow: string; title: string; copy?: string }) {
@@ -400,7 +463,7 @@ function SectionHeading({ eyebrow, title, copy }: { eyebrow: string; title: stri
     <div className="view-reveal mx-auto mb-10 max-w-2xl text-center md:mb-14">
       <Eyebrow>{eyebrow}</Eyebrow>
       <h2 className="font-display text-3xl leading-tight text-heading sm:text-4xl lg:text-5xl">{title}</h2>
-      {copy && <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-subtle sm:text-base">{copy}</p>}
+      {copy && <p className="mx-auto mt-4 max-w-xl text-base leading-8 text-subtle">{copy}</p>}
     </div>
   );
 }
@@ -411,9 +474,9 @@ function StatusBadge({ status }: { status: FloorStatus }) {
     : status === "Entrepreneur"
       ? "border-gold/40 bg-gold/10 text-gold"
       : status.includes("Left")
-        ? "border-orange-400/35 bg-orange-400/10 text-orange-300"
+        ? "border-orange-400/35 bg-orange-400/10 text-warning"
         : "border-border bg-panel text-subtle";
-  return <span className={`inline-flex whitespace-nowrap border px-2 py-1 text-[0.58rem] font-semibold uppercase tracking-[0.1em] ${style}`}>{status}</span>;
+  return <span className={`inline-flex whitespace-nowrap border px-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] ${style}`}>{status}</span>;
 }
 
 function ShareProgress({ project, compact = false }: { project: Project; compact?: boolean }) {
@@ -439,8 +502,8 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: () => void
         <Image src={project.img} alt={project.name} fill sizes="(min-width: 768px) 50vw, 100vw" className="object-cover transition duration-700 group-hover:scale-105" />
         <div className="absolute inset-0 bg-gradient-to-t from-ground via-ground/20 to-transparent" />
         <div className="absolute left-4 top-4 flex gap-2">
-          <span className={`px-3 py-1 text-[0.58rem] font-bold uppercase tracking-[0.14em] text-white ${project.status === "Active" ? "bg-green" : "bg-muted"}`}>{project.status}</span>
-          {project.highlight && <span className="bg-gold px-3 py-1 text-[0.58rem] font-bold uppercase tracking-[0.12em] text-ground">Hot deal</span>}
+          <span className={`px-3 py-1 text-xs font-bold uppercase tracking-[0.1em] text-white ${project.status === "Active" ? "bg-green" : "bg-muted"}`}>{project.status}</span>
+          {project.highlight && <span className="bg-gold px-3 py-1 text-xs font-bold uppercase tracking-[0.08em] text-on-accent">Hot deal</span>}
         </div>
         <div className="absolute inset-x-5 bottom-5">
           <h3 className="font-display text-xl text-heading sm:text-2xl">{project.name}</h3>
@@ -456,13 +519,13 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: () => void
           ].map(([label, value]) => (
             <div key={label} className="border border-border bg-panel p-2.5 text-center">
               <p className="text-sm font-semibold text-gold">{value}</p>
-              <p className="mt-1 text-[0.52rem] uppercase tracking-[0.13em] text-muted">{label}</p>
+              <p className="mt-1 text-xs font-medium uppercase tracking-[0.09em] text-muted">{label}</p>
             </div>
           ))}
         </div>
         <p className="mb-5 text-lg font-semibold text-gold">
           {fmtLac(project.priceFrom)} <span className="text-xs font-normal text-muted">–</span> {fmtLac(project.priceTo)}
-          <span className="ml-1 text-[0.68rem] font-normal text-muted">BDT / share</span>
+          <span className="ml-1 text-xs font-medium text-muted">BDT / share</span>
         </p>
         <ShareProgress project={project} compact />
         <div className="my-5 grid grid-cols-2 gap-2 text-xs">
@@ -475,7 +538,7 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: () => void
             <p className="mt-1 font-semibold text-body">{project.landArea}</p>
           </div>
         </div>
-        <button onClick={onOpen} className={`w-full border border-gold px-4 py-3 text-[0.68rem] font-bold uppercase tracking-[0.18em] transition hover:bg-gold hover:text-ground ${project.highlight ? "bg-gold text-ground" : "text-gold"}`}>
+        <button onClick={onOpen} className={`w-full border border-gold px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] transition hover:bg-gold hover:text-on-accent ${project.highlight ? "bg-gold text-on-accent" : "text-gold"}`}>
           View full details <span aria-hidden="true">→</span>
         </button>
       </div>
@@ -530,14 +593,14 @@ function ProjectModal({ project, onClose }: { project: Project; onClose: () => v
           ].map(([label, value]) => (
             <div key={label} className="border-r border-t border-border px-3 py-4 text-center first:border-t-0 sm:border-t-0">
               <p className="text-sm font-semibold text-gold">{value}</p>
-              <p className="mt-1 text-[0.55rem] uppercase tracking-[0.11em] text-muted">{label}</p>
+              <p className="mt-1 text-xs font-medium uppercase tracking-[0.08em] text-muted">{label}</p>
             </div>
           ))}
         </div>
 
         <div className="hide-scrollbar flex overflow-x-auto border-b border-border">
           {(["overview", "floors", "timeline", "payment"] as const).map((item) => (
-            <button key={item} onClick={() => setTab(item)} className={`shrink-0 border-b-2 px-5 py-4 text-[0.65rem] font-semibold uppercase tracking-[0.15em] transition ${tab === item ? "border-gold text-gold" : "border-transparent text-muted hover:text-body"}`}>
+            <button key={item} onClick={() => setTab(item)} className={`shrink-0 border-b-2 px-5 py-4 text-xs font-semibold uppercase tracking-[0.11em] transition ${tab === item ? "border-gold text-gold" : "border-transparent text-muted hover:text-body"}`}>
               {item === "floors" ? "Floor plan" : item === "payment" ? "Payment plan" : item}
             </button>
           ))}
@@ -555,18 +618,18 @@ function ProjectModal({ project, onClose }: { project: Project; onClose: () => v
                   <ShareProgress project={project} />
                 </div>
                 <div className="border border-border bg-panel p-5">
-                  <p className="text-[0.62rem] uppercase tracking-[0.16em] text-muted">Share price range</p>
+                  <p className="text-xs font-medium uppercase tracking-[0.11em] text-muted">Share price range</p>
                   <p className="mt-2 font-display text-3xl text-gold">{fmtLac(project.priceFrom)} – {fmtLac(project.priceTo)} <span className="font-sans text-xs text-muted">BDT</span></p>
                   <p className="mt-2 text-xs text-subtle">Price varies by floor level and flat position.</p>
                 </div>
                 <div className="border border-border bg-panel p-5">
-                  <p className="mb-3 text-[0.62rem] uppercase tracking-[0.16em] text-muted">Nearby landmarks</p>
+                  <p className="mb-3 text-xs font-medium uppercase tracking-[0.11em] text-muted">Nearby landmarks</p>
                   {project.nearbyLandmarks.map((item) => <p key={item} className="border-b border-border py-2 text-sm text-body last:border-0">{item}</p>)}
                 </div>
               </div>
               <div className="space-y-5">
                 <div className="border border-border bg-panel p-5">
-                  <p className="mb-3 text-[0.62rem] uppercase tracking-[0.16em] text-muted">Legal & project details</p>
+                  <p className="mb-3 text-xs font-medium uppercase tracking-[0.11em] text-muted">Legal & project details</p>
                   {[
                     ["Land price", project.landPrice],
                     ["Registration", project.registrationStatus],
@@ -579,12 +642,12 @@ function ProjectModal({ project, onClose }: { project: Project; onClose: () => v
                   ))}
                 </div>
                 <div className="border border-border bg-panel p-5">
-                  <p className="mb-4 text-[0.62rem] uppercase tracking-[0.16em] text-muted">Amenities included</p>
+                  <p className="mb-4 text-xs font-medium uppercase tracking-[0.11em] text-muted">Amenities included</p>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                     {project.amenities.map((item) => <p key={item} className="flex gap-2 text-xs text-body"><span className="text-green-light">✓</span>{item}</p>)}
                   </div>
                 </div>
-                <button onClick={() => { onClose(); setTimeout(() => scrollToId("contact"), 50); }} className="w-full bg-gold px-5 py-4 text-xs font-bold uppercase tracking-[0.17em] text-ground transition hover:bg-gold-light">Book this land share →</button>
+                <button onClick={() => { onClose(); setTimeout(() => scrollToId("contact"), 50); }} className="w-full bg-gold px-5 py-4 text-xs font-bold uppercase tracking-[0.17em] text-on-accent transition hover:bg-accent-hover">Book this land share →</button>
               </div>
             </div>
           )}
@@ -592,7 +655,7 @@ function ProjectModal({ project, onClose }: { project: Project; onClose: () => v
           {tab === "floors" && (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] border-collapse text-left">
-                <thead><tr>{["Floor", "Type", "Flats", "Size", "Price / Share", "Status"].map((label) => <th key={label} className="border border-border bg-panel px-4 py-3 text-[0.6rem] uppercase tracking-[0.14em] text-muted">{label}</th>)}</tr></thead>
+                <thead><tr>{["Floor", "Type", "Flats", "Size", "Price / Share", "Status"].map((label) => <th key={label} className="border border-border bg-panel px-4 py-3 text-xs font-semibold uppercase tracking-[0.09em] text-muted">{label}</th>)}</tr></thead>
                 <tbody>{project.floorPlan.map((row) => <tr key={row.floor} className="transition hover:bg-panel/60"><td className="border border-border px-4 py-3 text-sm font-medium text-body">{row.floor}</td><td className="border border-border px-4 py-3 text-xs text-subtle">{row.type}</td><td className="border border-border px-4 py-3 text-sm text-subtle">{row.flats}</td><td className="border border-border px-4 py-3 text-xs text-subtle">{row.size}</td><td className="border border-border px-4 py-3 text-sm font-semibold text-gold">{row.price} BDT</td><td className="border border-border px-4 py-3"><StatusBadge status={row.status} /></td></tr>)}</tbody>
               </table>
             </div>
@@ -604,7 +667,7 @@ function ProjectModal({ project, onClose }: { project: Project; onClose: () => v
                 <div key={`${item.date}-${item.event}`} className="relative flex gap-5 pb-8 last:pb-0">
                   {index < project.timeline.length - 1 && <span className={`absolute left-[15px] top-8 h-[calc(100%-1rem)] w-px ${item.done ? "bg-green" : "bg-border"}`} />}
                   <span className={`relative z-10 grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 text-xs ${item.done ? "border-green-light bg-green text-white" : "border-border bg-panel text-muted"}`}>{item.done ? "✓" : "○"}</span>
-                  <div><p className={`text-[0.65rem] uppercase tracking-[0.14em] ${item.done ? "text-gold" : "text-muted"}`}>{item.date}</p><p className={`mt-1 text-sm ${item.done ? "font-medium text-heading" : "text-subtle"}`}>{item.event}</p></div>
+                  <div><p className={`text-xs font-medium uppercase tracking-[0.1em] ${item.done ? "text-gold" : "text-muted"}`}>{item.date}</p><p className={`mt-1 text-sm ${item.done ? "font-medium text-heading" : "text-subtle"}`}>{item.event}</p></div>
                 </div>
               ))}
             </div>
@@ -612,7 +675,7 @@ function ProjectModal({ project, onClose }: { project: Project; onClose: () => v
 
           {tab === "payment" && (
             <div>
-              <p className="mb-6 max-w-2xl text-sm leading-7 text-subtle">Payments are connected to documented project milestones, giving owners a clear view of when and why every instalment is due.</p>
+              <p className="mb-6 max-w-2xl text-base leading-8 text-subtle">Payments are connected to documented project milestones, giving owners a clear view of when and why every instalment is due.</p>
               <div className="space-y-3">
                 {paymentPlan.map((item) => (
                   <div key={item.phase} className="flex items-center gap-4 border border-border bg-panel p-4 sm:p-5">
@@ -636,13 +699,14 @@ function FAQItem({ item, open, onToggle }: { item: { q: string; a: string }; ope
       <button onClick={onToggle} aria-expanded={open} className="flex w-full items-center justify-between gap-5 py-5 text-left text-sm font-medium text-heading sm:text-base">
         <span>{item.q}</span><span className={`shrink-0 text-2xl font-light text-gold transition ${open ? "rotate-45" : ""}`}>+</span>
       </button>
-      <div className={`grid transition-all duration-300 ${open ? "grid-rows-[1fr] pb-5" : "grid-rows-[0fr]"}`}><div className="overflow-hidden"><p className="max-w-3xl pr-8 text-sm leading-7 text-subtle">{item.a}</p></div></div>
+      <div className={`grid transition-all duration-300 ${open ? "grid-rows-[1fr] pb-5" : "grid-rows-[0fr]"}`}><div className="overflow-hidden"><p className="max-w-3xl pr-8 text-base leading-8 text-subtle">{item.a}</p></div></div>
     </div>
   );
 }
 
 export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [theme, setTheme] = useState<Theme>("light");
   const [projectFilter, setProjectFilter] = useState<ProjectStatus>("Active");
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
@@ -651,14 +715,21 @@ export default function Home() {
   const visibleProjects = useMemo(() => projects.filter((project) => project.status === projectFilter), [projectFilter]);
 
   useEffect(() => {
+    const savedTheme = window.localStorage.getItem("barakah-theme") === "dark" ? "dark" : "light";
+    setTheme(savedTheme);
+    document.documentElement.classList.toggle("dark", savedTheme === "dark");
+    document.documentElement.style.colorScheme = savedTheme;
+  }, []);
+
+  useEffect(() => {
     let frame = 0;
     const updateHeroMotion = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const scrollY = Math.max(0, window.scrollY);
-        const scale = 1.04 + Math.min(scrollY / 1800, 0.1);
+        const scale = 1.015 + Math.min(scrollY / 2600, 0.055);
         const translateY = scrollY * 0.18;
-        const opacity = Math.max(0.52, 0.86 - scrollY / 1200);
+        const opacity = Math.max(0.62, 0.92 - scrollY / 1600);
         document.documentElement.style.setProperty("--hero-image-y", `${translateY}px`);
         document.documentElement.style.setProperty("--hero-image-scale", String(scale));
         document.documentElement.style.setProperty("--hero-image-opacity", String(opacity));
@@ -686,27 +757,48 @@ export default function Home() {
     event.currentTarget.reset();
   };
 
+  const toggleTheme = () => {
+    const nextTheme: Theme = theme === "light" ? "dark" : "light";
+    setTheme(nextTheme);
+    document.documentElement.classList.toggle("dark", nextTheme === "dark");
+    document.documentElement.style.colorScheme = nextTheme;
+    window.localStorage.setItem("barakah-theme", nextTheme);
+  };
+
   return (
     <main id="top" className="min-h-screen overflow-hidden bg-ground text-body">
       {selectedProject && <ProjectModal project={selectedProject} onClose={() => setSelectedProject(null)} />}
 
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-border/70 bg-ground/90 backdrop-blur-xl">
-        <div className="mx-auto flex h-[5.25rem] max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+      <header className="site-header fixed inset-x-0 top-0 z-50 border-b border-border/70 bg-ground/90 shadow-[0_8px_30px_rgba(12,41,23,.06)] backdrop-blur-xl">
+        <div className="mx-auto flex h-[4.75rem] max-w-7xl items-center justify-between px-4 sm:h-[5.25rem] sm:px-6 lg:px-8">
           <Logo />
-          <nav className="hidden items-center gap-8 md:flex" aria-label="Primary navigation">
-            {[["Projects", "projects"], ["How it works", "how-it-works"], ["Pricing", "pricing"], ["FAQ", "faq"], ["Contact", "contact"]].map(([label, id]) => <a key={id} href={`#${id}`} className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted transition hover:text-gold">{label}</a>)}
+          <nav className="hidden items-center gap-6 lg:flex xl:gap-8" aria-label="Primary navigation">
+            {navigationItems.map(([label, id]) => <a key={id} href={`#${id}`} className="nav-link text-[0.8rem] font-bold uppercase tracking-[0.09em] text-body transition-colors duration-200 hover:text-gold">{label}</a>)}
           </nav>
-          <button onClick={() => scrollToId("contact")} className="cta-shine hidden overflow-hidden bg-gold px-5 py-3 text-[0.65rem] font-bold uppercase tracking-[0.16em] text-ground transition hover:bg-gold-light lg:block">Book a share</button>
-          <button onClick={() => setMenuOpen((value) => !value)} onKeyDown={handleMenuKey} aria-expanded={menuOpen} aria-controls="mobile-menu" title={menuOpen ? "Close menu" : "Open menu"} className="menu-toggle grid h-12 w-12 place-items-center rounded-sm bg-transparent text-gold transition hover:bg-panel/60 active:scale-90 md:hidden" aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}>
-            <span className={`menu-icon ${menuOpen ? "is-open" : ""}`} aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </span>
-          </button>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <ThemeToggle theme={theme} onToggle={toggleTheme} />
+            <button onClick={() => scrollToId("contact")} className="cta-shine hidden overflow-hidden bg-gold px-5 py-3 text-xs font-bold uppercase tracking-[0.12em] text-on-accent transition hover:bg-accent-hover lg:block">Book a share</button>
+            <button onClick={() => setMenuOpen((value) => !value)} onKeyDown={handleMenuKey} aria-expanded={menuOpen} aria-controls="mobile-menu" title={menuOpen ? "Close menu" : "Open menu"} className="menu-toggle grid h-12 w-12 place-items-center rounded-sm bg-transparent text-gold transition hover:bg-panel/60 active:scale-90 lg:hidden" aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}>
+              <span className={`menu-icon ${menuOpen ? "is-open" : ""}`} aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </span>
+            </button>
+          </div>
         </div>
-        <div id="mobile-menu" className={`mobile-menu border-t border-border bg-ground px-4 transition-[max-height,opacity,padding] duration-300 md:hidden ${menuOpen ? "mobile-menu-open max-h-96 py-4 opacity-100" : "max-h-0 overflow-hidden py-0 opacity-0"}`}>
-          {["projects", "how-it-works", "pricing", "faq", "contact"].map((id, index) => <a key={id} href={`#${id}`} onClick={() => setMenuOpen(false)} style={{ animationDelay: `${index * 55}ms` }} className="mobile-menu-link block border-b border-border/60 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-subtle last:border-0">{id.replaceAll("-", " ")}</a>)}
+        <div id="mobile-menu" aria-hidden={!menuOpen} className={`mobile-menu overflow-hidden border-t border-border bg-ground/95 px-3 shadow-[0_18px_40px_rgba(12,41,23,.12)] backdrop-blur-xl transition-[max-height,opacity,transform,visibility,padding] duration-300 lg:hidden ${menuOpen ? "mobile-menu-open visible max-h-[32rem] translate-y-0 py-3 opacity-100" : "invisible pointer-events-none max-h-0 -translate-y-2 py-0 opacity-0"}`}>
+          <nav className="mx-auto max-w-7xl" aria-label="Mobile navigation">
+            {navigationItems.map(([label, id], index) => (
+              <a key={id} href={`#${id}`} onClick={() => setMenuOpen(false)} style={{ animationDelay: `${index * 55}ms` }} className="mobile-menu-link flex min-h-14 items-center justify-between rounded-sm border-b border-border/70 px-3 text-sm font-bold uppercase tracking-[0.1em] text-body last:border-0 hover:bg-panel hover:text-gold">
+                <span className="flex items-center gap-3"><span className="text-xs font-semibold text-gold">0{index + 1}</span>{label}</span>
+                <span className="mobile-menu-arrow text-lg text-muted" aria-hidden="true">→</span>
+              </a>
+            ))}
+            <button onClick={() => { setMenuOpen(false); scrollToId("contact"); }} style={{ animationDelay: `${navigationItems.length * 55}ms` }} className="mobile-menu-link mt-3 flex min-h-12 w-full items-center justify-center bg-gold px-5 text-xs font-bold uppercase tracking-[0.12em] text-on-accent hover:bg-accent-hover">
+              Book a share
+            </button>
+          </nav>
         </div>
       </header>
 
@@ -715,21 +807,21 @@ export default function Home() {
         <div className="hero-shade absolute inset-0" aria-hidden="true" />
         <div className="float-orb absolute -left-32 top-8 h-96 w-96 rounded-full bg-gold/10 blur-[120px]" />
         <div className="float-orb float-orb-delay absolute -right-32 bottom-20 h-96 w-96 rounded-full bg-green/15 blur-[120px]" />
-        <div className="relative z-10 mx-auto w-full max-w-7xl px-4 py-20 text-center sm:px-6 md:py-28 lg:px-8">
-          <div className="fade-up relative z-20 mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-green-light/70 bg-ground/75 px-4 py-2 text-[0.6rem] font-semibold uppercase tracking-[0.17em] text-green-light shadow-[0_8px_30px_rgba(11,20,16,.28)] backdrop-blur-sm sm:text-[0.68rem]">
+        <div className="hero-copy relative z-10 mx-auto w-full max-w-7xl px-4 py-20 text-center sm:px-6 md:py-28 lg:px-8">
+          <div className="fade-up relative z-20 mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-green-light/70 bg-ground/85 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-green-light shadow-[0_8px_30px_rgba(11,20,16,.16)] backdrop-blur-sm">
             <span className="h-1.5 w-1.5 rounded-full bg-green-light shadow-[0_0_12px_#5E9E71]" />
             A new land-share model for Bangladesh
           </div>
           <h1 className="fade-up fade-delay-1 mx-auto max-w-5xl font-display text-[2.75rem] leading-[0.94] tracking-[-0.025em] text-heading sm:text-6xl md:text-7xl lg:text-[6rem]">
             Own the land.<br /><em className="gold-sheen font-normal">Build your future.</em>
           </h1>
-          <p className="fade-up fade-delay-2 mx-auto mt-7 max-w-2xl text-sm leading-7 text-body sm:text-base md:text-lg md:leading-8">We buy the land. You own a registered share. Together, we build the home—giving you real ownership before the foundation is laid.</p>
+          <p className="fade-up fade-delay-2 mx-auto mt-7 max-w-2xl text-base font-medium leading-8 text-body md:text-lg">We buy the land. You own a registered share. Together, we build the home—giving you real ownership before the foundation is laid.</p>
           <div className="fade-up fade-delay-3 mt-9 flex flex-col justify-center gap-3 sm:flex-row">
-            <button onClick={() => scrollToId("projects")} className="cta-shine overflow-hidden bg-gold px-7 py-4 text-xs font-bold uppercase tracking-[0.16em] text-ground transition hover:-translate-y-1 hover:bg-gold-light">View available shares</button>
+            <button onClick={() => scrollToId("projects")} className="cta-shine overflow-hidden bg-gold px-7 py-4 text-xs font-bold uppercase tracking-[0.16em] text-on-accent transition hover:-translate-y-1 hover:bg-accent-hover">View available shares</button>
             <button onClick={() => scrollToId("how-it-works")} className="border border-border bg-ground/30 px-7 py-4 text-xs font-semibold uppercase tracking-[0.15em] text-body backdrop-blur transition hover:border-green hover:text-green-light">How it works ↓</button>
           </div>
           <div className="fade-up fade-delay-4 mx-auto mt-12 grid max-w-4xl grid-cols-2 border border-border/70 bg-ground/70 backdrop-blur md:mt-16 md:grid-cols-4">
-            {[["6", "Projects"], ["196", "Total flats"], ["15–35 Lac", "Per share"], ["RAJUK", "Approved"]].map(([value, label]) => <div key={label} className="border-b border-r border-border/70 px-3 py-5 last:border-r-0 md:border-b-0"><p className="font-display text-xl text-heading sm:text-2xl">{value}</p><p className="mt-1 text-[0.55rem] uppercase tracking-[0.15em] text-muted">{label}</p></div>)}
+            {[["6", "Projects"], ["196", "Total flats"], ["15–35 Lac", "Per share"], ["RAJUK", "Approved"]].map(([value, label]) => <div key={label} className="border-b border-r border-border/70 px-3 py-5 last:border-r-0 md:border-b-0"><p className="font-display text-xl text-heading sm:text-2xl">{value}</p><p className="mt-1 text-xs font-medium uppercase tracking-[0.1em] text-muted">{label}</p></div>)}
           </div>
         </div>
       </section>
@@ -739,7 +831,7 @@ export default function Home() {
           {[0, 1].map((copy) => (
             <div key={copy} className="flex shrink-0 items-center">
               {["Registered Land", "Transparent Pricing", "RAJUK Approval", "Collective Building", "Real Ownership"].map((item) => (
-                <span key={`${copy}-${item}`} className="flex items-center whitespace-nowrap px-5 text-[0.62rem] font-semibold uppercase tracking-[0.22em] text-subtle sm:px-8">
+                <span key={`${copy}-${item}`} className="flex items-center whitespace-nowrap px-5 text-xs font-semibold uppercase tracking-[0.16em] text-subtle sm:px-8">
                   <span className="mr-5 h-1.5 w-1.5 rotate-45 bg-gold sm:mr-8" />{item}
                 </span>
               ))}
@@ -756,9 +848,9 @@ export default function Home() {
               <article key={step.num} className="view-reveal group relative bg-surface p-6 transition hover:-translate-y-1 hover:bg-panel sm:p-8" style={{ animationDelay: `${index * 70}ms` }}>
                 <span className="absolute right-4 top-1 font-display text-7xl text-gold/[0.06]">{step.num}</span>
                 <div className={`mb-7 h-1 w-12 ${index % 2 ? "bg-green" : "bg-gold"}`} />
-                <p className={`text-[0.62rem] font-semibold uppercase tracking-[0.18em] ${index % 2 ? "text-green-light" : "text-gold"}`}>Step {step.num}</p>
+                <p className={`text-xs font-bold uppercase tracking-[0.13em] ${index % 2 ? "text-green-light" : "text-gold"}`}>Step {step.num}</p>
                 <h3 className="mt-3 font-display text-xl text-heading sm:text-2xl">{step.title}</h3>
-                <p className="mt-3 text-sm leading-7 text-subtle">{step.desc}</p>
+                <p className="mt-3 text-base leading-8 text-subtle">{step.desc}</p>
               </article>
             ))}
           </div>
@@ -770,7 +862,7 @@ export default function Home() {
           <div className="mb-9 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
             <div><Eyebrow>Available now</Eyebrow><h2 className="font-display text-3xl text-heading sm:text-4xl md:text-5xl">Land Share Projects</h2></div>
             <div className="flex w-full sm:w-auto">
-              {(["Active", "Pre-Launch"] as const).map((filter) => <button key={filter} onClick={() => setProjectFilter(filter)} className={`flex-1 border px-5 py-3 text-[0.65rem] font-semibold uppercase tracking-[0.14em] sm:flex-none ${projectFilter === filter ? "border-gold bg-gold text-ground" : "border-border text-muted hover:text-gold"}`}>{filter}</button>)}
+              {(["Active", "Pre-Launch"] as const).map((filter) => <button key={filter} onClick={() => setProjectFilter(filter)} className={`flex-1 border px-5 py-3 text-xs font-semibold uppercase tracking-[0.1em] sm:flex-none ${projectFilter === filter ? "border-gold bg-gold text-on-accent" : "border-border text-muted hover:text-gold"}`}>{filter}</button>)}
             </div>
           </div>
           <div className="grid gap-6 md:grid-cols-2">{visibleProjects.map((project) => <ProjectCard key={project.id} project={project} onOpen={() => setSelectedProject(project)} />)}</div>
@@ -782,8 +874,8 @@ export default function Home() {
           <div className="p-6 sm:p-10 lg:p-14">
             <Eyebrow>Transparent pricing</Eyebrow>
             <h2 className="font-display text-3xl leading-tight text-heading sm:text-4xl">BDT 15 Lac to 35 Lac<br /><span className="text-gold">per Land Share</span></h2>
-            <p className="mt-5 max-w-lg text-sm leading-7 text-subtle">Price depends on the project, floor level and flat position. Every buyer receives registered land rights before construction.</p>
-            <ul className="mt-7 space-y-3">{["Registered land deed in your name", "Clear milestone-based payments", "Collectively managed construction", "Transferable ownership", "RAJUK-approved plans on active projects"].map((item) => <li key={item} className="flex gap-3 text-sm text-body"><span className="text-green-light">✓</span>{item}</li>)}</ul>
+            <p className="mt-5 max-w-lg text-base leading-8 text-subtle">Price depends on the project, floor level and flat position. Every buyer receives registered land rights before construction.</p>
+            <ul className="mt-7 space-y-3">{["Registered land deed in your name", "Clear milestone-based payments", "Collectively managed construction", "Transferable ownership", "RAJUK-approved plans on active projects"].map((item) => <li key={item} className="flex gap-3 text-base text-body"><span className="font-bold text-green-light">✓</span>{item}</li>)}</ul>
           </div>
           <div className="border-t border-border p-4 sm:p-8 lg:border-l lg:border-t-0 lg:p-10">
             <div className="space-y-2">{[
@@ -792,7 +884,7 @@ export default function Home() {
               ["4th–6th floor", "20–27 Lac", "Mid-level view premium"],
               ["7th–9th floor", "25–30 Lac", "Elevated view — high demand"],
               ["Top floor", "28–35 Lac", "Penthouse + roof rights"],
-            ].map(([floor, price, note]) => <div key={floor} className="flex items-center justify-between gap-4 border border-border bg-ground p-4 transition hover:border-gold/50"><div><p className="text-sm font-medium text-body">{floor}</p><p className="mt-1 text-[0.65rem] text-muted">{note}</p></div><p className="shrink-0 text-sm font-semibold text-gold">{price} BDT</p></div>)}</div>
+            ].map(([floor, price, note]) => <div key={floor} className="flex items-center justify-between gap-4 border border-border bg-ground p-4 transition hover:border-gold/50"><div><p className="text-sm font-semibold text-body">{floor}</p><p className="mt-1 text-xs font-medium text-muted">{note}</p></div><p className="shrink-0 text-sm font-bold text-gold">{price} BDT</p></div>)}</div>
           </div>
         </div>
       </section>
@@ -808,10 +900,10 @@ export default function Home() {
         <div className="contact-card relative mx-auto max-w-7xl overflow-hidden rounded-sm border border-border px-5 py-10 sm:px-10 md:px-14 md:py-14">
           <div className="relative grid gap-10 md:grid-cols-[1.05fr_.95fr] md:items-center md:gap-16">
             <div className="text-center md:text-left">
-              <p className="mb-3 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-gold">Start your ownership journey</p>
+              <p className="mb-3 text-xs font-bold uppercase tracking-[0.15em] text-gold-light">Start your ownership journey</p>
               <h2 className="font-display text-3xl leading-tight text-white drop-shadow-[0_2px_18px_rgba(0,0,0,.35)] sm:text-4xl md:text-5xl">Ready to own your share?</h2>
-              <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-white sm:text-base md:mx-0">Tell us how to reach you. We&apos;ll share available floors, legal documents and the next project briefing within 24 hours.</p>
-              <div className="mt-6 flex flex-wrap justify-center gap-2 text-[0.63rem] font-semibold uppercase tracking-[0.12em] text-white md:justify-start">
+              <p className="mx-auto mt-4 max-w-xl text-base leading-8 text-white/90 md:mx-0">Tell us how to reach you. We&apos;ll share available floors, legal documents and the next project briefing within 24 hours.</p>
+              <div className="mt-6 flex flex-wrap justify-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-white md:justify-start">
                 <span className="rounded-full border border-gold/40 bg-ground/75 px-3 py-2">No obligation</span>
                 <span className="rounded-full border border-gold/40 bg-ground/75 px-3 py-2">Verified projects</span>
                 <span className="rounded-full border border-gold/40 bg-ground/75 px-3 py-2">WhatsApp support</span>
@@ -824,12 +916,12 @@ export default function Home() {
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="grid gap-3">
-                  <label className="text-left text-[0.62rem] font-semibold uppercase tracking-[0.13em] text-gold-light" htmlFor="full-name">Full name</label>
+                  <label className="text-left text-xs font-bold uppercase tracking-[0.1em] text-gold-light" htmlFor="full-name">Full name</label>
                   <input id="full-name" name="name" required placeholder="Your full name" className="min-w-0 rounded-sm border border-border bg-surface px-4 py-3.5 text-sm text-heading outline-none transition placeholder:text-subtle focus:border-gold focus:ring-2 focus:ring-gold/15" />
-                  <label className="mt-1 text-left text-[0.62rem] font-semibold uppercase tracking-[0.13em] text-gold-light" htmlFor="phone">WhatsApp number</label>
+                  <label className="mt-1 text-left text-xs font-bold uppercase tracking-[0.1em] text-gold-light" htmlFor="phone">WhatsApp number</label>
                   <input id="phone" name="phone" type="tel" required placeholder="+880 1XXX XXXXXX" className="min-w-0 rounded-sm border border-border bg-surface px-4 py-3.5 text-sm text-heading outline-none transition placeholder:text-subtle focus:border-gold focus:ring-2 focus:ring-gold/15" />
-                  <button className="cta-shine mt-2 overflow-hidden rounded-sm bg-gold px-6 py-4 text-[0.65rem] font-bold uppercase tracking-[0.16em] text-ground transition hover:bg-gold-light">Register interest <span aria-hidden="true">→</span></button>
-                  <p className="text-center text-[0.65rem] text-white/80">Your details stay private. No spam, ever.</p>
+                  <button className="cta-shine mt-2 overflow-hidden rounded-sm bg-gold px-6 py-4 text-xs font-bold uppercase tracking-[0.12em] text-on-accent transition hover:bg-accent-hover">Register interest <span aria-hidden="true">→</span></button>
+                  <p className="text-center text-xs text-white/80">Your details stay private. No spam, ever.</p>
                 </form>
               )}
             </div>
