@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type ProjectStatus = "Active" | "Pre-Launch";
 type FloorStatus = "Available" | "Sold" | "Entrepreneur" | `${number} Left`;
@@ -376,7 +376,7 @@ const navigationItems = [
 const fmtLac = (value: number) => `${Math.round(value / 100_000)} Lac`;
 
 function scrollToId(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+  document.getElementById(id)?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
 }
 
 function Logo({ compact = false }: { compact?: boolean }) {
@@ -495,6 +495,44 @@ function ShareProgress({ project, compact = false }: { project: Project; compact
   );
 }
 
+function CountUp({ value }: { value: number }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [display, setDisplay] = useState(value);
+
+  useEffect(() => {
+    const element = ref.current;
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    if (!element || motion.matches || !("IntersectionObserver" in window)) return;
+    let frame = 0;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      observer.disconnect();
+      const start = performance.now();
+      const tick = (now: number) => {
+        const progress = Math.min((now - start) / 1100, 1);
+        setDisplay(Math.round(value * (1 - Math.pow(1 - progress, 3))));
+        if (progress < 1) frame = requestAnimationFrame(tick);
+      };
+      frame = requestAnimationFrame(tick);
+    }, { threshold: 0.5 });
+    const stop = () => {
+      if (!motion.matches) return;
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+      setDisplay(value);
+    };
+    observer.observe(element);
+    motion.addEventListener("change", stop);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+      motion.removeEventListener("change", stop);
+    };
+  }, [value]);
+
+  return <span ref={ref} className="tabular-nums"><span className="sr-only">{value}</span><span aria-hidden="true">{display}</span></span>;
+}
+
 function ProjectCard({ project, onOpen }: { project: Project; onOpen: () => void }) {
   return (
     <article className={`project-card view-reveal group relative overflow-hidden rounded-sm border bg-surface shadow-[0_20px_70px_rgba(0,0,0,.28)] transition duration-500 hover:shadow-[0_32px_90px_rgba(0,0,0,.48)] ${project.highlight ? "border-gold/70" : "border-border"}`}>
@@ -546,7 +584,13 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: () => void
   );
 }
 
-function ProjectModal({ project, onClose }: { project: Project; onClose: () => void }) {
+function ProjectModal({ project, onClose, onEnquire }: { project: Project; onClose: () => void; onEnquire: () => void }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const sections = ["overview", "floors", "timeline", "payment"] as const;
+  const sectionLabels = { overview: "Overview", floors: "Floors & prices", timeline: "Timeline", payment: "Payments" };
   const [tab, setTab] = useState<"overview" | "floors" | "timeline" | "payment">("overview");
   const [imageIndex, setImageIndex] = useState(0);
   const remaining = project.totalFlats - project.soldShares;
@@ -554,33 +598,64 @@ function ProjectModal({ project, onClose }: { project: Project; onClose: () => v
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const closeOnEscape = (event: globalThis.KeyboardEvent) => event.key === "Escape" && onClose();
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const overlay = dialogRef.current?.parentElement;
+    const siblings = Array.from(overlay?.parentElement?.children ?? []).filter((element): element is HTMLElement => element instanceof HTMLElement && element !== overlay);
+    const inertStates = siblings.map((element) => element.inert);
+    siblings.forEach((element) => { element.inert = true; });
+    dialogRef.current?.focus();
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") closeRef.current();
+      if (event.key !== "Tab") return;
+      const items = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button, a[href], input, [tabindex="0"]') ?? []).filter((item) => item.getClientRects().length > 0 && !item.hasAttribute("disabled"));
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
     window.addEventListener("keydown", closeOnEscape);
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", closeOnEscape);
+      siblings.forEach((element, index) => { element.inert = inertStates[index]; });
+      previousFocus?.focus({ preventScroll: true });
     };
-  }, [onClose]);
+  }, []);
 
   return (
-    <div className="fixed inset-0 z-[100] overflow-y-auto bg-ground/95 backdrop-blur-xl md:p-6">
-      <button type="button" onClick={onClose} className="fixed inset-0 cursor-default" aria-label="Close project details" />
-      <div role="dialog" aria-modal="true" aria-labelledby="project-title" className="relative mx-auto min-h-screen w-full max-w-5xl overflow-hidden border-border bg-surface shadow-2xl md:min-h-0 md:border">
-        <div className="relative h-64 overflow-hidden md:h-80">
-          <Image src={project.imgs[imageIndex]} alt={project.name} fill sizes="(min-width: 1024px) 1024px, 100vw" className="object-cover" priority />
+    <div className="modal-backdrop fixed inset-0 z-[100] flex items-center justify-center bg-black/55 backdrop-blur-sm md:p-6">
+      <button type="button" onClick={onClose} tabIndex={-1} className="absolute inset-0 cursor-default" aria-label="Close project details" />
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="project-title" className="modal-panel relative flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden border-border bg-surface shadow-2xl outline-none md:h-[min(900px,90dvh)] md:rounded-2xl md:border">
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2 pt-[max(.5rem,env(safe-area-inset-top))] sm:px-6">
+          <div><p className="text-xs font-semibold text-muted">Explore your land share</p><p className="text-sm font-semibold text-heading">Project details</p></div>
+          <button onClick={onClose} className="min-h-11 rounded-lg border border-border px-4 text-sm font-semibold text-heading transition hover:bg-panel" aria-label="Close details and return to projects">Close ×</button>
+        </header>
+        <div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+
+        <div className="relative h-52 overflow-hidden sm:h-72 md:h-80">
+          {project.imgs.map((src, index) => (
+            <Image key={src} src={src} alt={index === imageIndex ? project.name : ""} aria-hidden={index !== imageIndex} fill sizes="(min-width: 1024px) 1024px, 100vw" className={`object-cover transition-opacity duration-500 ${index === imageIndex ? "opacity-100" : "opacity-0"}`} priority={index === 0} />
+          ))}
           <div className="absolute inset-0 bg-gradient-to-t from-ground via-ground/15 to-transparent" />
-          <button onClick={onClose} className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full border border-white/20 bg-ground/70 text-lg text-heading transition hover:border-gold hover:text-gold" aria-label="Close project details">×</button>
+          <span className="absolute right-4 top-4 rounded-full bg-black/65 px-3 py-1 text-xs font-semibold text-white" aria-live="polite">Photo {imageIndex + 1} of {project.imgs.length}</span>
           <div className="absolute bottom-4 left-4 flex gap-2 md:left-6">
             {project.imgs.map((image, index) => (
-              <button key={image} onClick={() => setImageIndex(index)} aria-label={`Show image ${index + 1}`} className={`relative h-11 w-16 overflow-hidden border-2 ${imageIndex === index ? "border-gold" : "border-transparent"}`}>
+              <button key={image} onClick={() => setImageIndex(index)} aria-label={`Show image ${index + 1}`} aria-pressed={imageIndex === index} className={`relative h-11 w-16 overflow-hidden border-2 ${imageIndex === index ? "border-gold" : "border-transparent"}`}>
                 <Image src={image} alt="" fill sizes="64px" className="object-cover" />
               </button>
             ))}
           </div>
-          <div className="absolute bottom-4 right-4 max-w-[55%] text-right md:right-6">
-            <h2 id="project-title" className="font-display text-xl leading-tight text-heading md:text-3xl">{project.name}</h2>
-            <p className="mt-1 text-xs text-subtle md:text-sm">{project.location}</p>
-          </div>
+        </div>
+        <div className="px-4 py-5 sm:px-6">
+          <p className="mb-2 text-xs font-bold uppercase tracking-wider text-gold">{project.status} · {remaining} shares remaining</p>
+          <h2 id="project-title" className="font-display text-2xl leading-tight text-heading sm:text-3xl">{project.name}</h2>
+          <p className="mt-2 text-sm text-subtle">{project.location}</p>
+          <p className="mt-3 text-sm leading-6 text-subtle">Explore the project, compare floor prices, then review the timeline and payments. When you’re ready, request details from our team.</p>
         </div>
 
         <div className="grid grid-cols-2 border-b border-border sm:grid-cols-5">
@@ -591,27 +666,35 @@ function ProjectModal({ project, onClose }: { project: Project; onClose: () => v
             ["Flat size", project.flatSize],
             ["Handover", project.completion],
           ].map(([label, value]) => (
-            <div key={label} className="border-r border-t border-border px-3 py-4 text-center first:border-t-0 sm:border-t-0">
+            <div key={label} className="border-r border-t border-border px-3 py-4 text-center first:border-t-0 last:col-span-2 sm:border-t-0 sm:last:col-span-1">
               <p className="text-sm font-semibold text-gold">{value}</p>
               <p className="mt-1 text-xs font-medium uppercase tracking-[0.08em] text-muted">{label}</p>
             </div>
           ))}
         </div>
 
-        <div className="hide-scrollbar flex overflow-x-auto border-b border-border">
+        <div data-section-start />
+        <div className="details-nav sticky top-0 z-20 grid grid-cols-4 border-b border-border bg-surface px-1" aria-label="Project detail sections">
           {(["overview", "floors", "timeline", "payment"] as const).map((item) => (
-            <button key={item} onClick={() => setTab(item)} className={`shrink-0 border-b-2 px-5 py-4 text-xs font-semibold uppercase tracking-[0.11em] transition ${tab === item ? "border-gold text-gold" : "border-transparent text-muted hover:text-body"}`}>
-              {item === "floors" ? "Floor plan" : item === "payment" ? "Payment plan" : item}
+            <button key={item} onClick={() => {
+              setTab(item);
+              const marker = contentRef.current?.querySelector<HTMLElement>("[data-section-start]");
+              if (marker && contentRef.current) {
+                const top = marker.offsetTop - contentRef.current.offsetTop;
+                if (contentRef.current.scrollTop > top) contentRef.current.scrollTo({ top, behavior: "instant" });
+              }
+            }} aria-pressed={tab === item} className={`min-h-14 border-b-2 px-1 py-3 text-xs font-semibold transition sm:text-sm ${tab === item ? "border-gold text-gold" : "border-transparent text-muted hover:text-body"}`}>
+              {sectionLabels[item]}
             </button>
           ))}
         </div>
 
-        <div className="p-4 sm:p-6 md:p-8">
+        <div key={tab} className="content-enter p-4 sm:p-6 md:p-8">
           {tab === "overview" && (
             <div className="grid gap-5 md:grid-cols-2 md:gap-6">
               <div className="space-y-5">
                 <div className="border border-border bg-panel p-5">
-                  <div className="mb-4 flex items-center justify-between">
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                     <h3 className="text-sm font-semibold text-body">Share availability</h3>
                     <span className="text-sm font-semibold text-green-light">{remaining} remaining</span>
                   </div>
@@ -636,8 +719,8 @@ function ProjectModal({ project, onClose }: { project: Project; onClose: () => v
                     ["Architect", project.architect],
                     ["RAJUK status", project.status === "Active" ? "Approved" : "Pending"],
                   ].map(([label, value]) => (
-                    <div key={label} className="flex gap-5 border-b border-border py-2.5 text-xs last:border-0">
-                      <span className="w-24 shrink-0 text-muted">{label}</span><span className="flex-1 text-right text-body">{value}</span>
+                    <div key={label} className="flex flex-col gap-1 border-b border-border py-2.5 text-sm last:border-0 sm:flex-row sm:gap-5">
+                      <span className="w-24 shrink-0 text-muted">{label}</span><span className="min-w-0 flex-1 break-words text-body sm:text-right">{value}</span>
                     </div>
                   ))}
                 </div>
@@ -647,17 +730,28 @@ function ProjectModal({ project, onClose }: { project: Project; onClose: () => v
                     {project.amenities.map((item) => <p key={item} className="flex gap-2 text-xs text-body"><span className="text-green-light">✓</span>{item}</p>)}
                   </div>
                 </div>
-                <button onClick={() => { onClose(); setTimeout(() => scrollToId("contact"), 50); }} className="w-full bg-gold px-5 py-4 text-xs font-bold uppercase tracking-[0.17em] text-on-accent transition hover:bg-accent-hover">Book this land share →</button>
+
               </div>
             </div>
           )}
 
           {tab === "floors" && (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] border-collapse text-left">
+            <div>
+              <p className="mb-4 text-sm leading-6 text-subtle">Compare prices and availability below. Our team can confirm the latest options for your preferred floor.</p>
+              <div className="grid gap-3 sm:grid-cols-2 lg:hidden">
+                {project.floorPlan.map((row) => (
+                  <article key={row.floor} className="rounded-xl border border-border bg-panel p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold text-heading">{row.floor}</h3><StatusBadge status={row.status} /></div>
+                    <p className="mt-1 text-sm text-subtle">{row.type}</p>
+                    <dl className="mt-4 grid grid-cols-2 gap-3 text-sm"><div><dt className="text-muted">Flat size</dt><dd className="font-medium text-heading">{row.size}</dd></div><div><dt className="text-muted">Flats on floor</dt><dd className="font-medium text-heading">{row.flats}</dd></div></dl>
+                    <p className="mt-4 border-t border-border pt-3 font-semibold text-gold">{row.price} BDT <span className="text-xs font-normal text-subtle">/ land share</span></p>
+                  </article>
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto lg:block"><table className="w-full min-w-[720px] border-collapse text-left">
                 <thead><tr>{["Floor", "Type", "Flats", "Size", "Price / Share", "Status"].map((label) => <th key={label} className="border border-border bg-panel px-4 py-3 text-xs font-semibold uppercase tracking-[0.09em] text-muted">{label}</th>)}</tr></thead>
                 <tbody>{project.floorPlan.map((row) => <tr key={row.floor} className="transition hover:bg-panel/60"><td className="border border-border px-4 py-3 text-sm font-medium text-body">{row.floor}</td><td className="border border-border px-4 py-3 text-xs text-subtle">{row.type}</td><td className="border border-border px-4 py-3 text-sm text-subtle">{row.flats}</td><td className="border border-border px-4 py-3 text-xs text-subtle">{row.size}</td><td className="border border-border px-4 py-3 text-sm font-semibold text-gold">{row.price} BDT</td><td className="border border-border px-4 py-3"><StatusBadge status={row.status} /></td></tr>)}</tbody>
-              </table>
+              </table></div>
             </div>
           )}
 
@@ -687,7 +781,24 @@ function ProjectModal({ project, onClose }: { project: Project; onClose: () => v
               <p className="mt-5 border border-gold/35 bg-gold/5 p-4 text-xs leading-6 text-gold">Land registration triggers the legal transfer of the deed into your name through the relevant Sub-Registrar&apos;s office.</p>
             </div>
           )}
+          <div className="mt-6 rounded-xl border border-border bg-panel p-4">
+            <p className="text-xs font-semibold text-muted">Step {sections.indexOf(tab) + 1} of 4 · {sectionLabels[tab]}</p>
+            {tab !== "payment" ? <button onClick={() => {
+              setTab(sections[sections.indexOf(tab) + 1]);
+              const nav = contentRef.current?.querySelector<HTMLElement>("[data-section-start]");
+              if (nav && contentRef.current) contentRef.current.scrollTo({ top: nav.offsetTop - contentRef.current.offsetTop, behavior: "instant" });
+              requestAnimationFrame(() => dialogRef.current?.querySelector<HTMLButtonElement>('.details-nav button[aria-pressed="true"]')?.focus({ preventScroll: true }));
+            }} className="mt-2 min-h-11 text-left text-sm font-bold text-gold">Next: {sectionLabels[sections[sections.indexOf(tab) + 1]]} →</button> : <p className="mt-2 text-sm leading-6 text-body">Next, request details. Share your name and WhatsApp number so our team can discuss availability and documents. This does not reserve a share.</p>}
+          </div>
         </div>
+        </div>
+        <footer className="shrink-0 border-t border-border bg-surface px-4 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))] sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div><p className="text-xs text-muted">Land share from</p><p className="text-lg font-bold text-gold">{fmtLac(project.priceFrom)} <span className="text-xs">BDT</span></p></div>
+            <button onClick={onEnquire} className="min-h-12 rounded-lg bg-gold px-5 py-3 text-sm font-bold text-on-accent transition hover:bg-accent-hover active:scale-[.98]">Request details →</button>
+          </div>
+          <p className="mt-2 text-xs text-muted">Next: contact form · No payment required</p>
+        </footer>
       </div>
     </div>
   );
@@ -711,6 +822,7 @@ export default function Home() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [submitted, setSubmitted] = useState(false);
+  const [enquiryProject, setEnquiryProject] = useState<Project | null>(null);
 
   const visibleProjects = useMemo(() => projects.filter((project) => project.status === projectFilter), [projectFilter]);
 
@@ -722,9 +834,16 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
     let frame = 0;
     const updateHeroMotion = () => {
       cancelAnimationFrame(frame);
+      if (motion.matches) {
+        document.documentElement.style.removeProperty("--hero-image-y");
+        document.documentElement.style.removeProperty("--hero-image-scale");
+        document.documentElement.style.removeProperty("--hero-image-opacity");
+        return;
+      }
       frame = requestAnimationFrame(() => {
         const scrollY = Math.max(0, window.scrollY);
         const scale = 1.015 + Math.min(scrollY / 2600, 0.055);
@@ -737,15 +856,30 @@ export default function Home() {
     };
 
     updateHeroMotion();
+    motion.addEventListener("change", updateHeroMotion);
     window.addEventListener("scroll", updateHeroMotion, { passive: true });
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener("scroll", updateHeroMotion);
+      motion.removeEventListener("change", updateHeroMotion);
       document.documentElement.style.removeProperty("--hero-image-y");
       document.documentElement.style.removeProperty("--hero-image-scale");
       document.documentElement.style.removeProperty("--hero-image-opacity");
     };
   }, []);
+
+  useEffect(() => {
+    if (!("IntersectionObserver" in window)) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add("is-revealed");
+        observer.unobserve(entry.target);
+      });
+    }, { threshold: 0.12 });
+    document.querySelectorAll(".view-reveal:not(.is-revealed)").forEach((element) => observer.observe(element));
+    return () => observer.disconnect();
+  }, [projectFilter]);
 
   const handleMenuKey = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (event.key === "Escape") setMenuOpen(false);
@@ -767,7 +901,15 @@ export default function Home() {
 
   return (
     <main id="top" className="min-h-screen overflow-hidden bg-ground text-body">
-      {selectedProject && <ProjectModal project={selectedProject} onClose={() => setSelectedProject(null)} />}
+      {selectedProject && <ProjectModal project={selectedProject} onClose={() => setSelectedProject(null)} onEnquire={() => {
+        setEnquiryProject(selectedProject);
+        setSubmitted(false);
+        setSelectedProject(null);
+        setTimeout(() => {
+          scrollToId("contact");
+          document.getElementById("full-name")?.focus({ preventScroll: true });
+        }, 50);
+      }} />}
 
       <header className="site-header fixed inset-x-0 top-0 z-50 border-b border-border/70 bg-ground/90 shadow-[0_8px_30px_rgba(12,41,23,.06)] backdrop-blur-xl">
         <div className="mx-auto flex h-[4.75rem] max-w-7xl items-center justify-between px-4 sm:h-[5.25rem] sm:px-6 lg:px-8">
@@ -808,7 +950,7 @@ export default function Home() {
         <div className="float-orb absolute -left-32 top-8 h-96 w-96 rounded-full bg-gold/10 blur-[120px]" />
         <div className="float-orb float-orb-delay absolute -right-32 bottom-20 h-96 w-96 rounded-full bg-green/15 blur-[120px]" />
         <div className="hero-copy relative z-10 mx-auto w-full max-w-7xl px-4 py-20 text-center sm:px-6 md:py-28 lg:px-8">
-          <div className="fade-up relative z-20 mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-green-light/70 bg-ground/85 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-green-light shadow-[0_8px_30px_rgba(11,20,16,.16)] backdrop-blur-sm">
+          <div className="hero-eyebrow fade-up relative z-20 mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-green-light/70 bg-ground/85 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-green-light shadow-[0_8px_30px_rgba(11,20,16,.16)] backdrop-blur-sm">
             <span className="h-1.5 w-1.5 rounded-full bg-green-light shadow-[0_0_12px_#5E9E71]" />
             A new land-share model for Bangladesh
           </div>
@@ -821,7 +963,7 @@ export default function Home() {
             <button onClick={() => scrollToId("how-it-works")} className="border border-border bg-ground/30 px-7 py-4 text-xs font-semibold uppercase tracking-[0.15em] text-body backdrop-blur transition hover:border-green hover:text-green-light">How it works ↓</button>
           </div>
           <div className="fade-up fade-delay-4 mx-auto mt-12 grid max-w-4xl grid-cols-2 border border-border/70 bg-ground/70 backdrop-blur md:mt-16 md:grid-cols-4">
-            {[["6", "Projects"], ["196", "Total flats"], ["15–35 Lac", "Per share"], ["RAJUK", "Approved"]].map(([value, label]) => <div key={label} className="border-b border-r border-border/70 px-3 py-5 last:border-r-0 md:border-b-0"><p className="font-display text-xl text-heading sm:text-2xl">{value}</p><p className="mt-1 text-xs font-medium uppercase tracking-[0.1em] text-muted">{label}</p></div>)}
+            {[["6", "Projects"], ["196", "Total flats"], ["15–35 Lac", "Per share"], ["RAJUK", "Approved"]].map(([value, label]) => <div key={label} className="border-b border-r border-border/70 px-3 py-5 last:border-r-0 md:border-b-0"><p className="font-display text-xl text-heading sm:text-2xl">{label === "Projects" || label === "Total flats" ? <CountUp value={Number(value)} /> : value}</p><p className="mt-1 text-xs font-medium uppercase tracking-[0.1em] text-muted">{label}</p></div>)}
           </div>
         </div>
       </section>
@@ -865,7 +1007,7 @@ export default function Home() {
               {(["Active", "Pre-Launch"] as const).map((filter) => <button key={filter} onClick={() => setProjectFilter(filter)} className={`flex-1 border px-5 py-3 text-xs font-semibold uppercase tracking-[0.1em] sm:flex-none ${projectFilter === filter ? "border-gold bg-gold text-on-accent" : "border-border text-muted hover:text-gold"}`}>{filter}</button>)}
             </div>
           </div>
-          <div className="grid gap-6 md:grid-cols-2">{visibleProjects.map((project) => <ProjectCard key={project.id} project={project} onOpen={() => setSelectedProject(project)} />)}</div>
+          <div key={projectFilter} className="content-enter grid gap-6 md:grid-cols-2">{visibleProjects.map((project) => <ProjectCard key={project.id} project={project} onOpen={() => setSelectedProject(project)} />)}</div>
         </div>
       </section>
 
@@ -884,7 +1026,7 @@ export default function Home() {
               ["4th–6th floor", "20–27 Lac", "Mid-level view premium"],
               ["7th–9th floor", "25–30 Lac", "Elevated view — high demand"],
               ["Top floor", "28–35 Lac", "Penthouse + roof rights"],
-            ].map(([floor, price, note]) => <div key={floor} className="flex items-center justify-between gap-4 border border-border bg-ground p-4 transition hover:border-gold/50"><div><p className="text-sm font-semibold text-body">{floor}</p><p className="mt-1 text-xs font-medium text-muted">{note}</p></div><p className="shrink-0 text-sm font-bold text-gold">{price} BDT</p></div>)}</div>
+            ].map(([floor, price, note], index) => <div key={floor} style={{ animationDelay: `${index * 70}ms` }} className="view-reveal flex items-center justify-between gap-4 border border-border bg-ground p-4 transition hover:border-gold/50"><div><p className="text-sm font-semibold text-body">{floor}</p><p className="mt-1 text-xs font-medium text-muted">{note}</p></div><p className="shrink-0 text-sm font-bold text-gold">{price} BDT</p></div>)}</div>
           </div>
         </div>
       </section>
@@ -897,7 +1039,7 @@ export default function Home() {
       </section>
 
       <section id="contact" className="scroll-mt-20 px-4 pb-16 sm:px-6 md:pb-24 lg:px-8">
-        <div className="contact-card relative mx-auto max-w-7xl overflow-hidden rounded-sm border border-border px-5 py-10 sm:px-10 md:px-14 md:py-14">
+        <div className="contact-card view-reveal relative mx-auto max-w-7xl overflow-hidden rounded-sm border border-border px-5 py-10 sm:px-10 md:px-14 md:py-14">
           <div className="relative grid gap-10 md:grid-cols-[1.05fr_.95fr] md:items-center md:gap-16">
             <div className="text-center md:text-left">
               <p className="mb-3 text-xs font-bold uppercase tracking-[0.15em] text-gold-light">Start your ownership journey</p>
@@ -911,11 +1053,12 @@ export default function Home() {
             </div>
             <div className="contact-form-card rounded-sm border border-border bg-ground/75 p-4 shadow-[0_22px_60px_rgba(0,0,0,.24)] backdrop-blur sm:p-6">
               {submitted ? (
-                <div className="grid min-h-44 place-items-center text-center" role="status">
-                  <div><span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-green text-xl text-white">✓</span><p className="mt-4 font-semibold text-white">Interest registered</p><p className="mt-1 text-sm text-white/80">Our team will contact you shortly.</p></div>
+                <div className="content-enter grid min-h-44 place-items-center text-center" role="status">
+                  <div><span className="success-check mx-auto grid h-12 w-12 place-items-center rounded-full bg-green text-xl text-white">✓</span><p className="mt-4 font-semibold text-white">Interest registered</p><p className="mt-1 text-sm text-white/80">Our team will contact you shortly.</p></div>
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="grid gap-3">
+                  {enquiryProject && <div className="mb-2 rounded-lg border border-white/20 bg-white/5 p-3 text-sm text-white"><p className="text-xs text-white/70">You’re requesting details for</p><p className="mt-1 font-semibold">{enquiryProject.name}</p><input type="hidden" name="project" value={enquiryProject.name} /></div>}
                   <label className="text-left text-xs font-bold uppercase tracking-[0.1em] text-gold-light" htmlFor="full-name">Full name</label>
                   <input id="full-name" name="name" required placeholder="Your full name" className="min-w-0 rounded-sm border border-border bg-surface px-4 py-3.5 text-sm text-heading outline-none transition placeholder:text-subtle focus:border-gold focus:ring-2 focus:ring-gold/15" />
                   <label className="mt-1 text-left text-xs font-bold uppercase tracking-[0.1em] text-gold-light" htmlFor="phone">WhatsApp number</label>

@@ -279,12 +279,31 @@ button {
   pointer-events: none;
 }
 
-.hero-copy h1 {
-  text-shadow: 0 2px 26px rgba(255, 255, 255, 0.78);
-}
-
 .hero-copy > p {
   text-shadow: 0 1px 16px rgba(255, 255, 255, 0.82);
+}
+
+:root:not(.dark) .hero-copy h1 {
+  color: #ffffff;
+  text-shadow: 0 2px 4px rgba(5, 25, 13, 0.85), 0 5px 22px rgba(5, 25, 13, 0.65);
+}
+
+:root:not(.dark) .hero-eyebrow {
+  color: #fff1ae;
+  font-weight: 800;
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.7);
+  text-shadow: 0 1px 3px rgba(5, 25, 13, 0.95), 0 2px 10px rgba(5, 25, 13, 0.8);
+}
+
+:root:not(.dark) .hero-eyebrow > span {
+  background: #ffe294;
+}
+
+:root:not(.dark) .hero-copy .gold-sheen {
+  color: #ffe294;
+  background-image: none;
+  animation: none;
 }
 
 .contact-card {
@@ -448,12 +467,43 @@ button {
   }
 }
 
-@supports (animation-timeline: view()) {
-  .view-reveal {
-    animation: view-reveal linear both;
-    animation-timeline: view();
-    animation-range: entry 0% cover 18%;
-  }
+.view-reveal.is-revealed {
+  animation: view-reveal 550ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
+}
+
+.content-enter {
+  animation: content-enter 300ms ease-out both;
+}
+
+.modal-backdrop {
+  animation: content-enter 220ms ease-out both;
+}
+
+.modal-panel {
+  animation: view-reveal 360ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.hero-eyebrow > span {
+  animation: tagline-glow 3s ease-in-out infinite;
+}
+
+.success-check {
+  animation: success-check 420ms cubic-bezier(0.2, 0.8, 0.3, 1.2) both;
+}
+
+@keyframes content-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes tagline-glow {
+  0%, 100% { box-shadow: 0 0 4px rgba(255, 226, 148, 0.3); }
+  50% { box-shadow: 0 0 12px rgba(255, 226, 148, 0.85); }
+}
+
+@keyframes success-check {
+  from { opacity: 0; transform: scale(0.7); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 @keyframes view-reveal {
